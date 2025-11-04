@@ -1,0 +1,1 @@
+# jfrog-secret-rotator-lambda
