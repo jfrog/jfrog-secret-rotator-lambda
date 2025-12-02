@@ -1,3 +1,4 @@
+# (c) 2025 JFrog Ltd.
 # AWS Secrets Manager secret for JFrog token
 resource "aws_secretsmanager_secret" "jfrog_token" {
   name        = "${var.unique_id}-jfrog-token"

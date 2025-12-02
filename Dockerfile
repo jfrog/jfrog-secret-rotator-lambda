@@ -1,3 +1,4 @@
+# (c) 2025 JFrog Ltd.
 FROM public.ecr.aws/lambda/python:3.13
 # Copy requirements.txt
 COPY requirements.txt ${LAMBDA_TASK_ROOT}

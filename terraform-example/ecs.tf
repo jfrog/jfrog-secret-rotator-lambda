@@ -1,4 +1,5 @@
 # ------------------------------------------------------------------------------
+# (c) 2025 JFrog Ltd.
 # An example of how to deploy an ECS cluster, IAM role, security groups,
 # load balancer, target group, listener, task definition, and service.
 # task definition, and service.

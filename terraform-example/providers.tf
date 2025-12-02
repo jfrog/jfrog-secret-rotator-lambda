@@ -1,3 +1,4 @@
+# (c) 2025 JFrog Ltd.
 terraform {
   required_providers {
     aws = {

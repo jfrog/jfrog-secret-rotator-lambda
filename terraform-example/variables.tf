@@ -1,3 +1,4 @@
+# (c) 2025 JFrog Ltd.
 variable "unique_id" {
   description = "Unique ID for the resources used as a prefix for the resource names"
   type        = string

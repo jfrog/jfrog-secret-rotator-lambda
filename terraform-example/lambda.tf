@@ -1,3 +1,4 @@
+# (c) 2025 JFrog Ltd.
 # Lambda function for JFrog secret rotation
 resource "aws_lambda_function" "jfrog_secret_rotator" {
   function_name = "${var.unique_id}-jfrog-secret-rotator-lambda"

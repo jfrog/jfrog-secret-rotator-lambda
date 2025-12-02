@@ -1,3 +1,4 @@
+# (c) 2025 JFrog Ltd.
 # Data source to get the current AWS account ID
 data "aws_caller_identity" "current" {}
 
