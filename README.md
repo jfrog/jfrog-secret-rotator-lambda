@@ -1,4 +1,3 @@
-# (c) 2025 JFrog Ltd.
 # JFrog Token Rotator Lambda for AWS Secret
 
 This repo provides an [AWS Lambda](https://aws.amazon.com/lambda/) function for automatic rotation of [JFrog access tokens](https://jfrog.com/help/r/jfrog-platform-administration-documentation/access-tokens) stored in [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/). It securely generates and rotates short-lived JFrog tokens using your Lambda's IAM role, without manual intervention.
