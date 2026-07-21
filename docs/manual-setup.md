@@ -9,9 +9,15 @@ Step-by-step deployment using the AWS CLI and JFrog REST API. For Terraform, see
 - Docker (to build and push the Lambda container image)
 - Python 3.9 or newer (for local inspection; the runtime image uses the Lambda Python base)
 
-The steps below follow the resource dependency order: the secret is created first so its ARN can be referenced by the IAM policy, then the role, image, and function are created, and rotation is configured once the function exists.
+The steps below follow the resource dependency order: the container image is built and pushed first (the function requires it), the secret is created next so its ARN can be referenced by the IAM policy, then the role and function are created, and rotation is configured once the function exists.
 
-## 1. Create the AWS Secrets Manager secret
+## 1. Build and push the Lambda image
+
+Build and push the container image from [`secret-rotator/`](../secret-rotator/) to ECR. This is a shared step — see [Build and push the Lambda image](build-and-push-image.md) for the login, repository creation, and `buildx` commands.
+
+The resulting image URI (`<account_id>.dkr.ecr.<region>.amazonaws.com/jfrog-secret-rotator-lambda:latest`) is used as `ImageUri` when creating the Lambda function in [Step 4](#4-create-the-lambda-function).
+
+## 2. Create the AWS Secrets Manager secret
 
 The rotated secret JSON uses `username` and `password` (the JFrog access token is stored as `password`), matching what ECS private registry credentials expect.
 
@@ -32,9 +38,9 @@ arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-a1B2c3
 
 Note this ARN — it is used as `<full secret ARN>` in the IAM policy in the next step. Rotation is configured later in [Step 5](#5-configure-secret-rotation), after the Lambda function exists.
 
-## 2. Create the Lambda IAM role and permissions
+## 3. Create the Lambda IAM role and permissions
 
-Use the secret ARN from Step 1 as `<full secret ARN>` below.
+Use the secret ARN from Step 2 as `<full secret ARN>` below.
 
 ```bash
 # Create Lambda IAM Role
@@ -107,29 +113,7 @@ aws iam put-role-policy \
 
 The policy can be tightened by limiting resources (assumed roles, specific secrets, etc.).
 
-> **`<full secret ARN>`** is the ARN returned by `create-secret` in [Step 1](#1-create-the-aws-secrets-manager-secret). If you prefer not to copy the exact ARN, you can use a wildcard suffix instead: `arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-*`.
-
-## 3. Package and push the Lambda image
-
-Build from [`secret-rotator/`](../secret-rotator/). Log in and create the ECR repository first, then build the image tagged with the repository URI and push it in a single `buildx` step:
-
-```bash
-# Login to AWS ECR
-aws ecr get-login-password --region <region> | \
-  docker login --username AWS --password-stdin <account_id>.dkr.ecr.<region>.amazonaws.com
-
-# Create an ECR repository
-aws ecr create-repository \
-  --repository-name jfrog-secret-rotator-lambda \
-  --region <region> \
-  --image-scanning-configuration scanOnPush=true \
-  --image-tag-mutability MUTABLE
-
-# Build the Lambda container image and push it to ECR in one step
-docker buildx build --platform linux/amd64 --provenance=false \
-  -t <account_id>.dkr.ecr.<region>.amazonaws.com/jfrog-secret-rotator-lambda:latest \
-  --push ./secret-rotator
-```
+> **`<full secret ARN>`** is the ARN returned by `create-secret` in [Step 2](#2-create-the-aws-secrets-manager-secret). If you prefer not to copy the exact ARN, you can use a wildcard suffix instead: `arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-*`.
 
 ## 4. Create the Lambda function
 
@@ -154,7 +138,7 @@ aws lambda add-permission \
 
 ## 5. Configure secret rotation
 
-With the function created and allowed to be invoked by Secrets Manager, attach the rotation schedule to the secret from Step 1.
+With the function created and allowed to be invoked by Secrets Manager, attach the rotation schedule to the secret from Step 2.
 
 ```bash
 # Configure rotation schedule

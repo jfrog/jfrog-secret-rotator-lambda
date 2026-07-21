@@ -62,7 +62,7 @@ Choose one deployment path:
 - **[Manual setup (AWS CLI & REST API)](docs/manual-setup.md)** — step-by-step `aws` commands and JFrog IAM role tagging via curl
 - **[Terraform setup](docs/terraform-setup.md)** — Infrastructure-as-Code via [`terraform-example/`](terraform-example/); optionally tags a JFrog user with the Lambda IAM role (`assign_jfrog_iam_role`, default `true`)
 
-Both paths provision the rotation pipeline. Build and push the container image from [`secret-rotator/`](secret-rotator/) before deploying the Lambda (manually or before Terraform apply).
+Both paths provision the rotation pipeline. As an initial step, [build and push the container image](docs/build-and-push-image.md) from [`secret-rotator/`](secret-rotator/) before deploying the Lambda (manually or before Terraform apply).
 
 ## Security considerations
 

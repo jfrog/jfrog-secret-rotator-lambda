@@ -14,18 +14,22 @@ The Terraform example provisions:
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - AWS CLI configured with permissions to create the resources above
-- ECR image already built and pushed from [`secret-rotator/`](../secret-rotator/) — see [Package and push the Lambda image](manual-setup.md#3-package-and-push-the-lambda-image)
+- ECR image already built and pushed from [`secret-rotator/`](../secret-rotator/) — see [Build and push the Lambda image](build-and-push-image.md)
 - When `assign_jfrog_iam_role = true` (default):
   - A JFrog platform admin access token (`jfrog_admin_token`)
   - An existing JFrog user (`jfrog_admin_username`) to receive the IAM role tag
 - When `assign_jfrog_iam_role = false`:
   - An existing JFrog user tagged with the Lambda IAM role — see [When `assign_jfrog_iam_role = false`](#when-assign_jfrog_iam_role--false)
 
-## Quick start
+## 1. Build and push the Lambda image
+
+Terraform provisions the Lambda from a pre-existing ECR image; it does **not** build or push it. Before applying, build and push the container image from [`secret-rotator/`](../secret-rotator/) — see [Build and push the Lambda image](build-and-push-image.md). Use the resulting image URI as `ecr_image_uri` in `terraform.tfvars`.
+
+## 2. Quick start
 
 ```bash
 cd terraform-example
-cp terraform.tfvars.example terraform.tfvars   # edit with your values
+cp terraform.tfvars.example terraform.tfvars   # edit with your values (including ecr_image_uri)
 terraform init
 terraform plan
 terraform apply
