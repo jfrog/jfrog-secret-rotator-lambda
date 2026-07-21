@@ -7,9 +7,9 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.0"
+    platform = {
+      source  = "jfrog/platform"
+      version = ">= 1.7.0"
     }
   }
 }
@@ -17,6 +17,13 @@ terraform {
 # Configure the AWS Provider
 provider "aws" {
   region = var.region
+}
+
+# Configure the JFrog Platform Provider
+# Only used when assign_jfrog_iam_role is true (see platform_aws_iam_role in secret.tf)
+provider "platform" {
+  url          = "https://${var.jfrog_host}"
+  access_token = var.jfrog_admin_token
 }
 
 check "jfrog_credentials_when_assigning" {

@@ -241,7 +241,7 @@ resource "aws_ecs_service" "nginx" {
   depends_on = [
     aws_lb_listener.main[0],
     aws_secretsmanager_secret_rotation.jfrog_token,
-    null_resource.jfrog_iam_role_assignment
+    platform_aws_iam_role.jfrog_iam_role_assignment
   ]
 
   tags = var.tags

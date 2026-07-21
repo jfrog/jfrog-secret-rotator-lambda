@@ -62,11 +62,9 @@ See [`terraform.tfvars.example`](../terraform-example/terraform.tfvars.example) 
 
 ## JFrog IAM role tagging (managed by Terraform)
 
-When `assign_jfrog_iam_role = true` (default), Terraform runs a `local-exec` provisioner that calls:
+When `assign_jfrog_iam_role = true` (default), Terraform manages a [`platform_aws_iam_role`](https://registry.terraform.io/providers/jfrog/platform/latest/docs/resources/aws_iam_role) resource (from the `jfrog/platform` provider) that tags `jfrog_admin_username` with the Lambda execution role ARN.
 
-`PUT /access/api/v1/aws/iam_role` with the Lambda execution role ARN and `jfrog_admin_username`.
-
-Provide credentials via `jfrog_admin_token` and `jfrog_admin_username` in `terraform.tfvars`.
+Provide credentials via `jfrog_admin_token` and `jfrog_admin_username` in `terraform.tfvars`. Requires Artifactory 7.90.10 or later.
 
 ## When `assign_jfrog_iam_role = false`
 
@@ -107,7 +105,7 @@ See [Tag a JFrog user](manual-setup.md#6-tag-a-jfrog-user-with-the-lambda-iam-ro
 | Transition | Guidance |
 |------------|----------|
 | `false` → `true` | Set `assign_jfrog_iam_role = true`, provide username and admin token, re-apply |
-| `true` → `false` | Set `assign_jfrog_iam_role = false` before destroy if you want to keep the JFrog tag; otherwise remove it manually in JFrog |
+| `true` → `false` | Re-applying with `assign_jfrog_iam_role = false` destroys the `platform_aws_iam_role` resource and removes the JFrog tag. To keep the tag, run `terraform state rm platform_aws_iam_role.jfrog_iam_role_assignment` first |
 
 ## Outputs
 
@@ -195,11 +193,6 @@ terraform destroy
 
 1. The secret uses `recovery_window_in_days = 0` (immediate delete).
 2. NAT Gateway / ALB deletion can take several minutes.
-3. When `assign_jfrog_iam_role = true`, destroy does **not** remove the JFrog IAM role tag — delete it manually if needed:
-
-```bash
-curl -XDELETE "https://YOUR_JFROG_HOST/access/api/v1/aws/iam_role/YOUR_JFROG_USERNAME" \
-  -H "Authorization: Bearer YOUR_JFROG_ADMIN_TOKEN"
-```
+3. When `assign_jfrog_iam_role = true`, the JFrog IAM role tag is managed by the `platform_aws_iam_role` resource, so `terraform destroy` removes it automatically. To keep the tag, run `terraform state rm platform_aws_iam_role.jfrog_iam_role_assignment` before destroy, or set `assign_jfrog_iam_role = false` and re-apply first.
 
 4. Terraform does not manage the ECR repository or image — delete them manually if desired (see [Teardown](manual-setup.md#teardown)).
