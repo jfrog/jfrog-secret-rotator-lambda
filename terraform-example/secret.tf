@@ -20,6 +20,9 @@ resource "aws_secretsmanager_secret_rotation" "jfrog_token" {
   secret_id           = aws_secretsmanager_secret.jfrog_token.id
   rotation_lambda_arn = aws_lambda_function.jfrog_secret_rotator.arn
 
+  # Trigger the first rotation on setup instead of waiting for the schedule
+  rotate_immediately = var.trigger_initial_rotation
+
   rotation_rules {
     automatically_after_days = null
     duration                 = var.rotation_duration

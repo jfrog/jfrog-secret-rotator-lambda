@@ -64,6 +64,12 @@ variable "rotation_duration" {
   default     = "4h"
 }
 
+variable "trigger_initial_rotation" {
+  description = "Immediately trigger the first secret rotation after setup instead of waiting for the schedule"
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

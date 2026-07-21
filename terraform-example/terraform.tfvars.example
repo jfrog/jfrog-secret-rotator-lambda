@@ -17,6 +17,9 @@ secret_ttl                   = "21600"
 rotation_schedule_expression = "rate(4 hours)"
 rotation_duration            = "4h"
 
+# Trigger the first rotation right after apply instead of waiting for the schedule
+trigger_initial_rotation = true
+
 create_ecs              = false
 alb_allowed_cidr_blocks = ["0.0.0.0/0"]  # Restrict to YOUR_IP/32 in production
 

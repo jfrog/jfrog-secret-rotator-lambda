@@ -5,7 +5,7 @@ Infrastructure-as-Code deployment via [`terraform-example/`](../terraform-exampl
 The Terraform example provisions:
 
 - Lambda function (from a pre-pushed ECR image) and IAM role for secret rotation
-- AWS Secrets Manager secret with rotation schedule
+- AWS Secrets Manager secret with rotation schedule (and an immediate first rotation when `trigger_initial_rotation = true`, the default)
 - **JFrog IAM role tagging** for a JFrog user (when `assign_jfrog_iam_role = true`, the default)
 - VPC infrastructure (subnets, gateways, VPC endpoints)
 - Optional ECS Fargate + ALB demo (`create_ecs`, default `false`)
@@ -49,6 +49,7 @@ terraform apply
 | `secret_ttl` | no | `21000` | JFrog token TTL in seconds (must exceed rotation interval) |
 | `rotation_schedule_expression` | no | `rate(4 hours)` | Secrets Manager rotation schedule |
 | `rotation_duration` | no | `4h` | Rotation window duration |
+| `trigger_initial_rotation` | no | `true` | Trigger the first rotation right after apply instead of waiting for the schedule |
 | `secret_initial_value` | no | dummy username/password JSON | Initial secret string before first rotation |
 | `timeout` | no | `300` | Lambda timeout (seconds) |
 | `memory_size` | no | `512` | Lambda memory (MB) |
@@ -128,6 +129,8 @@ See [Tag a JFrog user](manual-setup.md#6-tag-a-jfrog-user-with-the-lambda-iam-ro
 ## Verify
 
 ### 1. Secret rotation
+
+With `trigger_initial_rotation = true` (default), Terraform kicks off the first rotation automatically after apply, so the secret should already hold a real JFrog token. To rotate again on demand:
 
 ```bash
 cd terraform-example
