@@ -14,7 +14,7 @@ The Terraform example provisions:
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - AWS CLI configured with permissions to create the resources above
-- ECR image already built and pushed from [`secret-rotator/`](../secret-rotator/) — see [Package and push the Lambda image](manual-setup.md#2-package-and-push-the-lambda-image)
+- ECR image already built and pushed from [`secret-rotator/`](../secret-rotator/) — see [Package and push the Lambda image](manual-setup.md#3-package-and-push-the-lambda-image)
 - When `assign_jfrog_iam_role = true` (default):
   - A JFrog platform admin access token (`jfrog_admin_token`)
   - An existing JFrog user (`jfrog_admin_username`) to receive the IAM role tag
@@ -89,7 +89,7 @@ curl -XPUT "https://YOUR_JFROG_HOST/access/api/v1/aws/iam_role" \
   -d "{\"username\": \"YOUR_JFROG_USERNAME\", \"iam_role\": \"${IAM_ROLE_ARN}\"}"
 ```
 
-See [Tag a JFrog user](manual-setup.md#5-tag-a-jfrog-user-with-the-lambda-iam-role).
+See [Tag a JFrog user](manual-setup.md#6-tag-a-jfrog-user-with-the-lambda-iam-role).
 
 ### Impact of skipping assignment
 

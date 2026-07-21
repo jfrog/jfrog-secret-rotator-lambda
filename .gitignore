@@ -5,5 +5,6 @@
 *.tfstate.lock.info
 *.tfvars
 !*.tfvars.example
+dummy.txt
 
 __pycache__/

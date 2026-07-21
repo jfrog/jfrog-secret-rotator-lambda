@@ -5,7 +5,7 @@ import boto3
 import logging
 import os
 import json
-import requests
+import urllib3
 from botocore.auth import SigV4Auth
 
 from botocore.awsrequest import AWSRequest
@@ -15,9 +15,25 @@ from botocore.session import Session
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+http = urllib3.PoolManager()
+
 JFROG_HOST = os.environ['JFROG_HOST'] 
 AWS_TOKEN_ENDPOINT = "/access/api/v1/aws/token"
 SECRET_TTL = os.environ['SECRET_TTL'] 
+
+# JFROG_HOST may be provided with or without a scheme (e.g. "https://mycompany.jfrog.io"
+# or "mycompany.jfrog.io"). Normalize it so we always build valid URLs and pass a bare
+# hostname (no scheme, no trailing slash) in the SigV4 "host" header.
+def _normalize_jfrog_host(raw_host):
+    raw_host = raw_host.strip().rstrip('/')
+    if '://' in raw_host:
+        scheme, _, host = raw_host.partition('://')
+    else:
+        scheme, host = 'https', raw_host
+    return scheme, host
+
+JFROG_SCHEME, JFROG_HOSTNAME = _normalize_jfrog_host(JFROG_HOST)
+JFROG_BASE_URL = f"{JFROG_SCHEME}://{JFROG_HOSTNAME}"
 
 def lambda_handler(event, context):
     # return 'Hello from AWS Lambda using Python' + sys.version + '!'
@@ -134,16 +150,17 @@ def test_secret(access_token):
     # This is where the secret can be tested against the JFrog service
     # For the JFrog rotation, we are skipping this test, as the secret is returned by JFrog and therefor is valid
     logger.info("test_secret: JFrog token rotation test")
-    readinessURL  = f"https://{JFROG_HOST}/access/api/v1/system/readiness"
+    readinessURL  = f"{JFROG_BASE_URL}/access/api/v1/system/readiness"
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
-    response = requests.get(readinessURL, headers=headers)
-    if response.status_code != 200:
-        logger.error(f"JFrog Readiness Check Failed: response.status_code={response.status_code}, {response.text}")
-        raise ValueError(f"JFrog Readiness Check Failed: response.status_code={response.status_code}, {response.text}")
+    response = http.request("GET", readinessURL, headers=headers)
+    response_text = response.data.decode("utf-8")
+    if response.status != 200:
+        logger.error(f"JFrog Readiness Check Failed: response.status_code={response.status}, {response_text}")
+        raise ValueError(f"JFrog Readiness Check Failed: response.status_code={response.status}, {response_text}")
     else:
-        logger.info(f"JFrog Readiness Check Successful: {response.text}")
+        logger.info(f"JFrog Readiness Check Successful: {response_text}")
 
 
 def finish_secret(service_client, arn, token):
@@ -212,13 +229,13 @@ def getCredentials(lambda_client, function_arn):
         logger.info(f"Adding headers to the request")
         signed_headers = dict(aws_request.headers)       
         # Add headers
-        signed_headers['host'] = JFROG_HOST
+        signed_headers['host'] = JFROG_HOSTNAME
         signed_headers['content-type'] = 'application/json'
         signed_headers['x-amz-region-set']= region  
         
                
         # Send the request to JFrog
-        tokenExchangeUrl = f"https://{JFROG_HOST}{AWS_TOKEN_ENDPOINT}?region={region}"
+        tokenExchangeUrl = f"{JFROG_BASE_URL}{AWS_TOKEN_ENDPOINT}?region={region}"
         # create a json body
         body = {
             "expires_in": SECRET_TTL
@@ -227,14 +244,15 @@ def getCredentials(lambda_client, function_arn):
         body_str = json.dumps(body)
         logger.info(f"tokenExchangeUrl={tokenExchangeUrl} body_str={body_str}")
         # post http request
-        response = requests.post(tokenExchangeUrl, headers=signed_headers, data=body_str)
+        response = http.request("POST", tokenExchangeUrl, headers=signed_headers, body=body_str)
+        response_text = response.data.decode("utf-8")
         # print error response
-        logger.info(f"response.status_code={response.status_code}")
-        if response.status_code !=200:
-            logger.error(f"Error exchanging AWS credentials for JFrog token: response.status_code={response.status_code}, {response.text}")
+        logger.info(f"response.status_code={response.status}")
+        if response.status !=200:
+            logger.error(f"Error exchanging AWS credentials for JFrog token: response.status_code={response.status}, {response_text}")
             return None, None
         # parse response.text and extract access_token
-        result = json.loads(response.text)
+        result = json.loads(response_text)
         access_token = result['access_token']
         username = result['username']
         # logger.info(f"access_token={access_token}")
