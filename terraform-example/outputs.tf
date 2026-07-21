@@ -27,10 +27,15 @@ output "iam_role_arn" {
   value       = aws_iam_role.jfrog_secret_rotation_lambda.arn
 }
 
+output "assign_jfrog_iam_role" {
+  description = "Whether JFrog IAM role tagging is managed by this Terraform module"
+  value       = var.assign_jfrog_iam_role
+}
+
 # JFrog IAM role assignment status
 output "jfrog_iam_role_assigned" {
-  description = "Status of JFrog IAM role assignment (executed automatically during terraform apply)"
-  value       = "IAM role ${aws_iam_role.jfrog_secret_rotation_lambda.arn} assigned to JFrog user ${var.jfrog_admin_username}"
+  description = "Status of JFrog IAM role assignment"
+  value       = var.assign_jfrog_iam_role ? "IAM role ${aws_iam_role.jfrog_secret_rotation_lambda.arn} assigned to JFrog user ${var.jfrog_admin_username}" : "Skipped — assign the Lambda IAM role to a JFrog user manually (see docs/manual-setup.md)"
 }
 
 # VPC outputs

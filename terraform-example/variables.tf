@@ -70,17 +70,25 @@ variable "tags" {
   default     = {}
 }
 
+variable "assign_jfrog_iam_role" {
+  description = "Call JFrog API to tag jfrog_admin_username with the Lambda IAM role ARN"
+  type        = bool
+  default     = true
+}
+
 variable "jfrog_admin_username" {
-  description = "JFrog username to assign IAM role to"
+  description = "JFrog username to assign IAM role to (required when assign_jfrog_iam_role is true)"
   type        = string
+  default     = ""
 }
 
 # This is the JFrog admin token for API authentication.
-# Not to confused with the token used in the secret for the ECS task or the lambda function.
+# Not to be confused with the token used in the secret for the ECS task or the lambda function.
 # For demo purposes, you can use the same admin token.
 variable "jfrog_admin_token" {
-  description = "JFrog admin token for API authentication"
+  description = "JFrog admin token for API authentication (required when assign_jfrog_iam_role is true)"
   type        = string
+  default     = ""
   sensitive   = true
 }
 

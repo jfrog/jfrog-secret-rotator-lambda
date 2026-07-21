@@ -33,8 +33,9 @@ resource "aws_secretsmanager_secret_rotation" "jfrog_token" {
 }
 
 # Execute JFrog API call to assign IAM role to a specific JFrog user
-# This must run before ECS resources are created
+# This must run before ECS resources are created (when assign_jfrog_iam_role is true)
 resource "null_resource" "jfrog_iam_role_assignment" {
+  count = var.assign_jfrog_iam_role ? 1 : 0
 
   provisioner "local-exec" {
     command = <<-EOT
