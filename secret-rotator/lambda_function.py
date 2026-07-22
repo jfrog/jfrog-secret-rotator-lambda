@@ -1,4 +1,4 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 # JFrog Secret Rotation Lambda for AWS Secrets Manager
 # This lambda function is used to rotate the JFrog access token stored in AWS Secrets Manager
 import boto3

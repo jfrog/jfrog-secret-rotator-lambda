@@ -6,16 +6,23 @@ Step-by-step deployment using the AWS CLI and JFrog REST API. For Terraform, see
 
 - [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate permissions
 - A JFrog Artifactory instance and a JFrog user that will be tagged with the Lambda IAM Role ARN
-- Docker (to build and push the Lambda container image)
-- Python 3.9 or newer (for local inspection; the runtime image uses the Lambda Python base)
+- `zip` (standard on macOS/Linux; used by the build script)
 
-The steps below follow the resource dependency order: the container image is built and pushed first (the function requires it), the secret is created next so its ARN can be referenced by the IAM policy, then the role and function are created, and rotation is configured once the function exists.
+The steps below follow the resource dependency order: the Lambda zip is built first (the function requires it), the secret is created next so its ARN can be referenced by the IAM policy, then the role and function are created, and rotation is configured once the function exists.
 
-## 1. Build and push the Lambda image
+## 1. Build the Lambda zip
 
-Build and push the container image from [`secret-rotator/`](../secret-rotator/) to ECR. This is a shared step — see [Build and push the Lambda image](build-and-push-image.md) for the login, repository creation, and `buildx` commands.
+The Lambda runs as a **Python zip** on the managed `python3.14` runtime (handler `lambda_function.lambda_handler`). The managed runtime provides `boto3`, `botocore`, and `urllib3`, so the zip contains only [`lambda_function.py`](../secret-rotator/lambda_function.py).
 
-The resulting image URI (`<account_id>.dkr.ecr.<region>.amazonaws.com/jfrog-secret-rotator-lambda:latest`) is used as `ImageUri` when creating the Lambda function in [Step 4](#4-create-the-lambda-function).
+From the repository root:
+
+```bash
+./scripts/build-lambda-zip.sh
+```
+
+The script writes `build/jfrog-secret-rotator-lambda.zip` with `lambda_function.py` at the **archive root** so the handler path `lambda_function.lambda_handler` resolves. The resulting archive is used as `--zip-file` when creating the Lambda function in [Step 4](#4-create-the-lambda-function).
+
+> Terraform does not use this script — the [Terraform setup](terraform-setup.md) packages the same file with the [`archive_file`](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file) data source. If you add dependencies that are not in the managed runtime, extend both packaging paths to vendor them (for example with `pip install -t` before zipping).
 
 ## 2. Create the AWS Secrets Manager secret
 
@@ -120,11 +127,12 @@ The policy can be tightened by limiting resources (assumed roles, specific secre
 ```bash
 aws lambda create-function \
   --function-name jfrog-secret-rotator-lambda \
-  --package-type Image \
-  --code ImageUri=<account_id>.dkr.ecr.<region>.amazonaws.com/jfrog-secret-rotator-lambda:latest \
+  --runtime python3.14 \
+  --handler lambda_function.lambda_handler \
+  --zip-file fileb://build/jfrog-secret-rotator-lambda.zip \
   --role arn:aws:iam::<account_id>:role/jfrog_secret_rotation_lambda \
   --environment Variables="{JFROG_HOST=<host>,SECRET_TTL=21600}" \
-  --region=<region> \
+  --region <region> \
   --description "JFrog access token rotation based on Lambda IAM role"
 
 # Allow Secrets Manager to invoke the function
@@ -133,7 +141,7 @@ aws lambda add-permission \
   --statement-id secretsmanager-invoke \
   --action lambda:InvokeFunction \
   --principal secretsmanager.amazonaws.com \
-  --region=<region>
+  --region <region>
 ```
 
 ## 5. Configure secret rotation
@@ -301,13 +309,7 @@ aws lambda delete-function --function-name "$FUNCTION_NAME" --region "$REGION"
 aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name jfrog_secret_rotation_policy
 aws iam delete-role --role-name "$ROLE_NAME"
 
-# 5. Optional: delete the ECR repository
-aws ecr delete-repository \
-  --repository-name jfrog-secret-rotator-lambda \
-  --force \
-  --region "$REGION"
-
-# 6. Optional: remove the JFrog IAM role tag (not removed automatically)
+# 5. Optional: remove the JFrog IAM role tag (not removed automatically)
 curl -XDELETE "https://${JFROG_HOST}/access/api/v1/aws/iam_role/${JFROG_USERNAME}" \
   -H "Authorization: Bearer <JFrog admin token>"
 ```

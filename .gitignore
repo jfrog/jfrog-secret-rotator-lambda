@@ -8,3 +8,4 @@
 dummy.txt
 
 __pycache__/
+build/

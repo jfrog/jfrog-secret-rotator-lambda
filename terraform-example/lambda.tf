@@ -1,14 +1,23 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
+# Package the Lambda source as a zip (boto3 is provided by the Python Lambda runtime)
+data "archive_file" "lambda_package" {
+  type        = "zip"
+  source_file = "${path.module}/../secret-rotator/lambda_function.py"
+  output_path = "${path.module}/build/jfrog-secret-rotator-lambda.zip"
+}
+
 # Lambda function for JFrog secret rotation
 resource "aws_lambda_function" "jfrog_secret_rotator" {
   function_name = "${var.unique_id}-jfrog-secret-rotator-lambda"
-  description    = "JFrog token rotation based on Lambda IAM role"
+  description   = "JFrog token rotation based on Lambda IAM role"
 
-  package_type = "Image"
-  image_uri    = var.ecr_image_uri
+  filename         = data.archive_file.lambda_package.output_path
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
+  runtime          = "python3.14"
+  handler          = "lambda_function.lambda_handler"
 
-  role    = aws_iam_role.jfrog_secret_rotation_lambda.arn
-  timeout = var.timeout
+  role        = aws_iam_role.jfrog_secret_rotation_lambda.arn
+  timeout     = var.timeout
   memory_size = var.memory_size
 
   environment {
@@ -28,4 +37,3 @@ resource "aws_lambda_permission" "secrets_manager" {
   function_name = aws_lambda_function.jfrog_secret_rotator.function_name
   principal     = "secretsmanager.amazonaws.com"
 }
-

@@ -8,7 +8,7 @@ Maintain a JFrog access token in [AWS Secrets Manager](https://aws.amazon.com/se
 
 An [AWS Lambda](https://aws.amazon.com/lambda/) function implements the Secrets Manager rotation contract. On each rotation, it exchanges the Lambda IAM credentials for a JFrog access token (SigV4 → JFrog AWS token endpoint), stores the result as `AWSPENDING`, tests it, then promotes it to `AWSCURRENT`.
 
-The function source code is in [`secret-rotator/`](secret-rotator/) (`lambda_function.py`, `requirements.txt`, `Dockerfile`).
+The function source code is in [`secret-rotator/lambda_function.py`](secret-rotator/lambda_function.py). It is deployed as a **Python zip** on the managed `python3.14` runtime (AWS SDK dependencies come from the runtime).
 
 ### Rotation steps
 
@@ -59,10 +59,10 @@ sequenceDiagram
 
 Choose one deployment path:
 
-- **[Manual setup (AWS CLI & REST API)](docs/manual-setup.md)** — step-by-step `aws` commands and JFrog IAM role tagging via curl
-- **[Terraform setup](docs/terraform-setup.md)** — Infrastructure-as-Code via [`terraform-example/`](terraform-example/); optionally tags a JFrog user with the Lambda IAM role (`assign_jfrog_iam_role`, default `true`)
+- **[Manual setup (AWS CLI & REST API)](docs/manual-setup.md)** — step-by-step `aws` commands and JFrog IAM role tagging via curl. The first step builds the deployment zip with [`scripts/build-lambda-zip.sh`](scripts/build-lambda-zip.sh).
+- **[Terraform setup](docs/terraform-setup.md)** — Infrastructure-as-Code via [`terraform-example/`](terraform-example/); Terraform packages `secret-rotator/lambda_function.py` into a zip via the `archive` provider. Optionally tags a JFrog user with the Lambda IAM role (`assign_jfrog_iam_role`, default `true`).
 
-Both paths provision the rotation pipeline. As an initial step, [build and push the container image](docs/build-and-push-image.md) from [`secret-rotator/`](secret-rotator/) before deploying the Lambda (manually or before Terraform apply).
+Both paths provision the rotation pipeline and deploy the Lambda as a Python zip package.
 
 ## Security considerations
 

@@ -1,4 +1,4 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 terraform {
   required_version = ">= 1.5"
 
@@ -6,6 +6,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 6.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
     }
     platform = {
       source  = "jfrog/platform"

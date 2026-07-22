@@ -1,4 +1,4 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 # Secret outputs
 output "secret_name" {
   description = "Name of the AWS Secrets Manager secret"

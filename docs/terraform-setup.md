@@ -4,7 +4,7 @@ Infrastructure-as-Code deployment via [`terraform-example/`](../terraform-exampl
 
 The Terraform example provisions:
 
-- Lambda function (from a pre-pushed ECR image) and IAM role for secret rotation
+- Lambda function (Python zip packaged by Terraform from [`secret-rotator/`](../secret-rotator/)) and IAM role for secret rotation
 - AWS Secrets Manager secret with rotation schedule (and an immediate first rotation when `trigger_initial_rotation = true`, the default)
 - **JFrog IAM role tagging** for a JFrog user (when `assign_jfrog_iam_role = true`, the default)
 - VPC infrastructure (subnets, gateways, VPC endpoints)
@@ -14,22 +14,19 @@ The Terraform example provisions:
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - AWS CLI configured with permissions to create the resources above
-- ECR image already built and pushed from [`secret-rotator/`](../secret-rotator/) — see [Build and push the Lambda image](build-and-push-image.md)
 - When `assign_jfrog_iam_role = true` (default):
   - A JFrog platform admin access token (`jfrog_admin_token`)
   - An existing JFrog user (`jfrog_admin_username`) to receive the IAM role tag
 - When `assign_jfrog_iam_role = false`:
   - An existing JFrog user tagged with the Lambda IAM role — see [When `assign_jfrog_iam_role = false`](#when-assign_jfrog_iam_role--false)
 
-## 1. Build and push the Lambda image
+## Quick start
 
-Terraform provisions the Lambda from a pre-existing ECR image; it does **not** build or push it. Before applying, build and push the container image from [`secret-rotator/`](../secret-rotator/) — see [Build and push the Lambda image](build-and-push-image.md). Use the resulting image URI as `ecr_image_uri` in `terraform.tfvars`.
-
-## 2. Quick start
+Terraform packages [`secret-rotator/lambda_function.py`](../secret-rotator/lambda_function.py) into a zip with the [`archive_file`](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file) data source and uploads it to Lambda (`runtime = python3.14`, `handler = lambda_function.lambda_handler`). No separate image build or zip script is required for this path. The managed Python runtime provides `boto3`.
 
 ```bash
 cd terraform-example
-cp terraform.tfvars.example terraform.tfvars   # edit with your values (including ecr_image_uri)
+cp terraform.tfvars.example terraform.tfvars   # edit with your values
 terraform init
 terraform plan
 terraform apply
@@ -39,7 +36,6 @@ terraform apply
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ecr_image_uri` | yes | — | ECR image URI for the Lambda container |
 | `jfrog_host` | yes | — | JFrog hostname (e.g. `mycompany.jfrog.io`) |
 | `assign_jfrog_iam_role` | no | `true` | Call JFrog API to tag a user with the Lambda IAM role ARN |
 | `jfrog_admin_username` | when `assign_jfrog_iam_role` | `""` | JFrog username for IAM role tagging |
@@ -54,6 +50,7 @@ terraform apply
 | `timeout` | no | `300` | Lambda timeout (seconds) |
 | `memory_size` | no | `512` | Lambda memory (MB) |
 | `create_ecs` | no | `false` | Deploy optional ECS + ALB demo |
+| `ecs_image` | no | `docker/nginx:latest` | Image to pull from JFrog for the ECS task, relative to `jfrog_host` (resolves to `<jfrog_host>/<ecs_image>`) |
 | `alb_allowed_cidr_blocks` | no | `["0.0.0.0/0"]` | CIDRs allowed to hit the ALB |
 | `vpc_cidr` | no | `10.0.0.0/16` | VPC CIDR |
 | `tags` | no | `{}` | Resource tags |
@@ -194,5 +191,4 @@ terraform destroy
 1. The secret uses `recovery_window_in_days = 0` (immediate delete).
 2. NAT Gateway / ALB deletion can take several minutes.
 3. When `assign_jfrog_iam_role = true`, the JFrog IAM role tag is managed by the `platform_aws_iam_role` resource, so `terraform destroy` removes it automatically. To keep the tag, run `terraform state rm platform_aws_iam_role.jfrog_iam_role_assignment` before destroy, or set `assign_jfrog_iam_role = false` and re-apply first.
-
-4. Terraform does not manage the ECR repository or image — delete them manually if desired (see [Teardown](manual-setup.md#teardown)).
+4. Generated zip under `terraform-example/build/` is local build output (gitignored) and is recreated on the next plan/apply.

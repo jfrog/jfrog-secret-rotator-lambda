@@ -1,13 +1,8 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 variable "unique_id" {
   description = "Unique ID for the resources used as a prefix for the resource names"
   type        = string
   default     = "demo"
-}
-
-variable "ecr_image_uri" {
-  description = "ECR image URI for the Lambda container image"
-  type        = string
 }
 
 variable "jfrog_host" {
@@ -114,5 +109,11 @@ variable "alb_allowed_cidr_blocks" {
   description = "List of CIDR blocks allowed to access the ALB"
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "ecs_image" {
+  description = "Image to pull for the ECS task, relative to jfrog_host (e.g. docker/nginx:latest)"
+  type        = string
+  default     = "docker/nginx:latest"
 }
 
