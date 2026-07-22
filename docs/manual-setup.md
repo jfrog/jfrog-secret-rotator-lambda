@@ -8,7 +8,7 @@ Step-by-step deployment using the AWS CLI and JFrog REST API. For Terraform, see
 - A JFrog Artifactory instance and a JFrog user that will be tagged with the Lambda IAM Role ARN
 - `zip` (standard on macOS/Linux; used by the build script)
 
-The steps below follow the resource dependency order: the Lambda zip is built first (the function requires it), the secret is created next so its ARN can be referenced by the IAM policy, then the role and function are created, and rotation is configured once the function exists.
+The steps below follow the resource dependency order: the Lambda zip is built first (the function requires it), the secret is created next so its ARN can be referenced by the IAM policy, then the role and function are created, the JFrog user is tagged with the Lambda IAM role, and rotation is configured last (it triggers an immediate rotation that depends on all of the above).
 
 ## 1. Build the Lambda zip
 
@@ -43,7 +43,7 @@ The `create-secret` response includes the full secret ARN (name plus a random 6-
 arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-a1B2c3
 ```
 
-Note this ARN — it is used as `<full secret ARN>` in the IAM policy in the next step. Rotation is configured later in [Step 5](#5-configure-secret-rotation), after the Lambda function exists.
+Note this ARN — it is used as `<full secret ARN>` in the IAM policy in the next step. Rotation is configured later in [Step 6](#6-configure-secret-rotation), after the Lambda function exists.
 
 ## 3. Create the Lambda IAM role and permissions
 
@@ -132,8 +132,14 @@ aws lambda create-function \
   --zip-file fileb://build/jfrog-secret-rotator-lambda.zip \
   --role arn:aws:iam::<account_id>:role/jfrog_secret_rotation_lambda \
   --environment Variables="{JFROG_HOST=<host>,SECRET_TTL=21600}" \
+  --timeout 300 \
+  --memory-size 512 \
   --region <region> \
   --description "JFrog access token rotation based on Lambda IAM role"
+
+# Set --timeout and --memory-size explicitly: the AWS CLI defaults (3s / 128 MB)
+# are too low for the JFrog token exchange and can cause rotations to time out.
+# These values match the Terraform defaults.
 
 # Allow Secrets Manager to invoke the function
 aws lambda add-permission \
@@ -144,9 +150,28 @@ aws lambda add-permission \
   --region <region>
 ```
 
-## 5. Configure secret rotation
+## 5. Tag a JFrog user with the Lambda IAM role
 
-With the function created and allowed to be invoked by Secrets Manager, attach the rotation schedule to the secret from Step 2.
+Do this **before** configuring rotation: `rotate-secret` in the next step triggers an immediate rotation, and that first rotation fails at `createSecret` (JFrog token exchange) unless the JFrog user is already mapped to the Lambda IAM role.
+
+```bash
+curl -XPUT "https://<jfrog host>/access/api/v1/aws/iam_role" \
+  -H "Content-type: application/json" \
+  -H "Authorization: Bearer <JFrog admin token>" \
+  -d '{"username": "<jfrog username>", "iam_role": "arn:aws:iam::<account_id>:role/jfrog_secret_rotation_lambda"}'
+
+# Validate
+curl -XGET "https://<jfrog host>/access/api/v1/aws/iam_role/<jfrog username>" \
+  -H "Authorization: Bearer <JFrog admin token>"
+```
+
+When using Terraform with `assign_jfrog_iam_role = false`, run this step with `terraform output -raw iam_role_arn` after apply. See [Terraform setup](terraform-setup.md#when-assign_jfrog_iam_role--false).
+
+## 6. Configure secret rotation
+
+With the function created, allowed to be invoked by Secrets Manager, and the JFrog user tagged ([Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role)), attach the rotation schedule to the secret from Step 2.
+
+> `rotate-secret` triggers an **immediate** rotation as soon as the schedule is attached, so it doubles as the first end-to-end test. This succeeds because the JFrog user was tagged in [Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role). To attach the schedule without rotating right away, add `RotateImmediately=false` to `--rotation-rules`.
 
 ```bash
 # Configure rotation schedule
@@ -168,21 +193,6 @@ aws secretsmanager rotate-secret \
 
 Set `SECRET_TTL` so the JFrog token outlives the Secrets Manager rotation interval.
 
-## 6. Tag a JFrog user with the Lambda IAM role
-
-```bash
-curl -XPUT "https://<jfrog host>/access/api/v1/aws/iam_role" \
-  -H "Content-type: application/json" \
-  -H "Authorization: Bearer <JFrog admin token>" \
-  -d '{"username": "<jfrog username>", "iam_role": "arn:aws:iam::<account_id>:role/jfrog_secret_rotation_lambda"}'
-
-# Validate
-curl -XGET "https://<jfrog host>/access/api/v1/aws/iam_role/<jfrog username>" \
-  -H "Authorization: Bearer <JFrog admin token>"
-```
-
-When using Terraform with `assign_jfrog_iam_role = false`, run this step with `terraform output -raw iam_role_arn` after apply. See [Terraform setup](terraform-setup.md#when-assign_jfrog_iam_role--false).
-
 ## Usage
 
 ### Testing and verifying rotation
@@ -191,7 +201,7 @@ This function is a **Secrets Manager rotation** Lambda. AWS invokes it with `Sec
 
 **Do not use the Lambda console “Test” button with `{}` or a default event.** That causes `KeyError: 'SecretId'` because those fields are missing.
 
-**Recommended: trigger a real rotation** (after [Step 5](#5-configure-secret-rotation) and [Step 6](#6-tag-a-jfrog-user-with-the-lambda-iam-role)):
+**Recommended: trigger a real rotation** (after [Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role) and [Step 6](#6-configure-secret-rotation)):
 
 ```bash
 aws secretsmanager rotate-secret \
@@ -328,3 +338,15 @@ aws secretsmanager update-secret-version-stage \
   --version-stage "AWSPENDING" \
   --remove-from-version-id "version-id-to-remove"
 ```
+
+6. **`create-secret` fails: "a secret with this name is already scheduled for deletion"** — a previous teardown deleted the secret with a recovery window (not `--force-delete-without-recovery`). Restore it instead of recreating, then reset its value:
+
+```bash
+aws secretsmanager restore-secret --secret-id "jfrog/access-token" --region <region>
+aws secretsmanager put-secret-value \
+  --secret-id "jfrog/access-token" \
+  --region <region> \
+  --secret-string '{"username":"dummy-user","password":"dummy-password"}'
+```
+
+The restored secret keeps its original ARN. Reuse that ARN as `<full secret ARN>` in [Step 3](#3-create-the-lambda-iam-role-and-permissions).

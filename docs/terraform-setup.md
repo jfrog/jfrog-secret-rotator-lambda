@@ -89,7 +89,7 @@ curl -XPUT "https://YOUR_JFROG_HOST/access/api/v1/aws/iam_role" \
   -d "{\"username\": \"YOUR_JFROG_USERNAME\", \"iam_role\": \"${IAM_ROLE_ARN}\"}"
 ```
 
-See [Tag a JFrog user](manual-setup.md#6-tag-a-jfrog-user-with-the-lambda-iam-role).
+See [Tag a JFrog user](manual-setup.md#5-tag-a-jfrog-user-with-the-lambda-iam-role).
 
 ### Impact of skipping assignment
 
