@@ -1,4 +1,4 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 # AWS Secrets Manager secret for JFrog token
 resource "aws_secretsmanager_secret" "jfrog_token" {
   name        = "${var.unique_id}-jfrog-token"
@@ -20,6 +20,9 @@ resource "aws_secretsmanager_secret_rotation" "jfrog_token" {
   secret_id           = aws_secretsmanager_secret.jfrog_token.id
   rotation_lambda_arn = aws_lambda_function.jfrog_secret_rotator.arn
 
+  # Trigger the first rotation on setup instead of waiting for the schedule
+  rotate_immediately = var.trigger_initial_rotation
+
   rotation_rules {
     automatically_after_days = null
     duration                 = var.rotation_duration
@@ -32,21 +35,13 @@ resource "aws_secretsmanager_secret_rotation" "jfrog_token" {
   ]
 }
 
-# Execute JFrog API call to assign IAM role to a specific JFrog user
-# This must run before ECS resources are created
-resource "null_resource" "jfrog_iam_role_assignment" {
+# Assign the Lambda IAM role to a specific JFrog user for passwordless access.
+# Requires Artifactory 7.90.10 or later.
+resource "platform_aws_iam_role" "jfrog_iam_role_assignment" {
+  count = var.assign_jfrog_iam_role ? 1 : 0
 
-  provisioner "local-exec" {
-    command = <<-EOT
-      echo "##################################################################"
-      echo "Assigning IAM role to JFrog user ${var.jfrog_admin_username}"
-      echo "##################################################################"
-      curl --fail -XPUT "https://${var.jfrog_host}/access/api/v1/aws/iam_role" \
-           -H "Content-type: application/json" \
-           -H "Authorization: Bearer ${var.jfrog_admin_token}" \
-           -d '{"username": "${var.jfrog_admin_username}", "iam_role": "${aws_iam_role.jfrog_secret_rotation_lambda.arn}"}'
-    EOT
-  }
+  username = var.jfrog_admin_username
+  iam_role = aws_iam_role.jfrog_secret_rotation_lambda.arn
 
   depends_on = [
     aws_iam_role.jfrog_secret_rotation_lambda,

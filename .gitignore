@@ -1,7 +1,11 @@
 .terraform
 .terraform.lock.hcl
-.terraform.lock.hcl
-.terraform.tfstate.lock.info
-terraform.tfvars
-terraform.tfstate
-terraform.tfstate.backup
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+*.tfvars
+!*.tfvars.example
+dummy.txt
+
+__pycache__/
+build/

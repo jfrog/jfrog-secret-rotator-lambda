@@ -1,13 +1,8 @@
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 variable "unique_id" {
   description = "Unique ID for the resources used as a prefix for the resource names"
   type        = string
   default     = "demo"
-}
-
-variable "ecr_image_uri" {
-  description = "ECR image URI for the Lambda container image"
-  type        = string
 }
 
 variable "jfrog_host" {
@@ -64,23 +59,37 @@ variable "rotation_duration" {
   default     = "4h"
 }
 
+variable "trigger_initial_rotation" {
+  description = "Immediately trigger the first secret rotation after setup instead of waiting for the schedule"
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
 }
 
+variable "assign_jfrog_iam_role" {
+  description = "Call JFrog API to tag jfrog_admin_username with the Lambda IAM role ARN"
+  type        = bool
+  default     = true
+}
+
 variable "jfrog_admin_username" {
-  description = "JFrog username to assign IAM role to"
+  description = "JFrog username to assign IAM role to (required when assign_jfrog_iam_role is true)"
   type        = string
+  default     = ""
 }
 
 # This is the JFrog admin token for API authentication.
-# Not to confused with the token used in the secret for the ECS task or the lambda function.
+# Not to be confused with the token used in the secret for the ECS task or the lambda function.
 # For demo purposes, you can use the same admin token.
 variable "jfrog_admin_token" {
-  description = "JFrog admin token for API authentication"
+  description = "JFrog admin token for API authentication (required when assign_jfrog_iam_role is true)"
   type        = string
+  default     = ""
   sensitive   = true
 }
 
@@ -100,5 +109,11 @@ variable "alb_allowed_cidr_blocks" {
   description = "List of CIDR blocks allowed to access the ALB"
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "ecs_image" {
+  description = "Image to pull for the ECS task, relative to jfrog_host (e.g. docker/nginx:latest)"
+  type        = string
+  default     = "docker/nginx:latest"
 }
 

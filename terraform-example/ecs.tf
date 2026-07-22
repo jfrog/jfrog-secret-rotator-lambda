@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# (c) 2025 JFrog Ltd.
+# (c) 2026 JFrog Ltd.
 # An example of how to deploy an ECS cluster, IAM role, security groups,
 # load balancer, target group, listener, task definition, and service.
 # task definition, and service.
@@ -18,7 +18,7 @@ resource "aws_ecs_cluster" "main" {
 # IAM role for ECS tasks
 resource "aws_iam_role" "ecs_task_execution" {
   count = var.create_ecs ? 1 : 0
-  name = "${var.unique_id}-ecs-task-execution-role"
+  name  = "${var.unique_id}-ecs-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -193,7 +193,7 @@ resource "aws_ecs_task_definition" "nginx" {
   container_definitions = jsonencode([
     {
       name  = "nginx"
-      image = "${var.jfrog_host}/docker/nginx:latest"
+      image = "${var.jfrog_host}/${var.ecs_image}"
       portMappings = [
         {
           containerPort = 80
@@ -219,12 +219,12 @@ resource "aws_ecs_task_definition" "nginx" {
 
 # ECS Service
 resource "aws_ecs_service" "nginx" {
-  count            = var.create_ecs ? 1 : 0
-  name             = "${var.unique_id}-nginx-service"
-  cluster          = aws_ecs_cluster.main[0].id
-  task_definition  = aws_ecs_task_definition.nginx[0].arn
-  desired_count    = 1
-  launch_type      = "FARGATE"
+  count           = var.create_ecs ? 1 : 0
+  name            = "${var.unique_id}-nginx-service"
+  cluster         = aws_ecs_cluster.main[0].id
+  task_definition = aws_ecs_task_definition.nginx[0].arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
 
   network_configuration {
     subnets          = aws_subnet.private[*].id
@@ -240,7 +240,8 @@ resource "aws_ecs_service" "nginx" {
 
   depends_on = [
     aws_lb_listener.main[0],
-    null_resource.jfrog_iam_role_assignment
+    aws_secretsmanager_secret_rotation.jfrog_token,
+    platform_aws_iam_role.jfrog_iam_role_assignment
   ]
 
   tags = var.tags

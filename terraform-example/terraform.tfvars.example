@@ -1,0 +1,33 @@
+region    = "eu-central-1"
+unique_id = "demo"
+
+# Lambda zip is packaged by Terraform from secret-rotator/lambda_function.py
+# (see docs/terraform-setup.md). For manual AWS CLI deploy, build the zip with
+# scripts/build-lambda-zip.sh (see docs/manual-setup.md).
+
+jfrog_host = "your-company.jfrog.io"
+
+# JFrog IAM role tagging (default true). Set false if the mapping already exists.
+assign_jfrog_iam_role = true
+jfrog_admin_username  = "your-jfrog-username"
+# jfrog_admin_token   = "..."  # required when assign_jfrog_iam_role is true
+
+# Token TTL must exceed the rotation schedule window
+# Example: rate(4 hours) → secret_ttl of 21600 (6 hours) or more
+secret_ttl                   = "21600"
+rotation_schedule_expression = "rate(4 hours)"
+rotation_duration            = "4h"
+
+# Trigger the first rotation right after apply instead of waiting for the schedule
+trigger_initial_rotation = true
+
+create_ecs              = false
+# Image pulled from JFrog for the ECS task, relative to jfrog_host (resolves to <jfrog_host>/<ecs_image>)
+ecs_image               = "docker/nginx:latest"
+alb_allowed_cidr_blocks = ["0.0.0.0/0"]  # Restrict to YOUR_IP/32 in production
+
+tags = {
+  Environment = "Demo"
+  Group       = "CTO"
+  ManagedBy   = "terraform"
+}

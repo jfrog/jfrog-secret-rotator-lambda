@@ -1,0 +1,194 @@
+# Terraform setup
+
+Infrastructure-as-Code deployment via [`terraform-example/`](../terraform-example/). For step-by-step AWS CLI commands, see [Manual setup](manual-setup.md).
+
+The Terraform example provisions:
+
+- Lambda function (Python zip packaged by Terraform from [`secret-rotator/`](../secret-rotator/)) and IAM role for secret rotation
+- AWS Secrets Manager secret with rotation schedule (and an immediate first rotation when `trigger_initial_rotation = true`, the default)
+- **JFrog IAM role tagging** for a JFrog user (when `assign_jfrog_iam_role = true`, the default)
+- VPC infrastructure (subnets, gateways, VPC endpoints)
+- Optional ECS Fargate + ALB demo (`create_ecs`, default `false`)
+
+## Prerequisites
+
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
+- AWS CLI configured with permissions to create the resources above
+- When `assign_jfrog_iam_role = true` (default):
+  - A JFrog platform admin access token (`jfrog_admin_token`)
+  - An existing JFrog user (`jfrog_admin_username`) to receive the IAM role tag
+- When `assign_jfrog_iam_role = false`:
+  - An existing JFrog user tagged with the Lambda IAM role — see [When `assign_jfrog_iam_role = false`](#when-assign_jfrog_iam_role--false)
+
+## Quick start
+
+Terraform packages [`secret-rotator/lambda_function.py`](../secret-rotator/lambda_function.py) into a zip with the [`archive_file`](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file) data source and uploads it to Lambda (`runtime = python3.14`, `handler = lambda_function.lambda_handler`). No separate image build or zip script is required for this path. The managed Python runtime provides `boto3`.
+
+```bash
+cd terraform-example
+cp terraform.tfvars.example terraform.tfvars   # edit with your values
+terraform init
+terraform plan
+terraform apply
+```
+
+## Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `jfrog_host` | yes | — | JFrog hostname (e.g. `mycompany.jfrog.io`) |
+| `assign_jfrog_iam_role` | no | `true` | Call JFrog API to tag a user with the Lambda IAM role ARN |
+| `jfrog_admin_username` | when `assign_jfrog_iam_role` | `""` | JFrog username for IAM role tagging |
+| `jfrog_admin_token` | when `assign_jfrog_iam_role` | `""` | JFrog admin token for the tagging API |
+| `unique_id` | no | `demo` | Prefix for resource names |
+| `region` | no | `eu-central-1` | AWS region |
+| `secret_ttl` | no | `21000` | JFrog token TTL in seconds (must exceed rotation interval) |
+| `rotation_schedule_expression` | no | `rate(4 hours)` | Secrets Manager rotation schedule |
+| `rotation_duration` | no | `4h` | Rotation window duration |
+| `trigger_initial_rotation` | no | `true` | Trigger the first rotation right after apply instead of waiting for the schedule |
+| `secret_initial_value` | no | dummy username/password JSON | Initial secret string before first rotation |
+| `timeout` | no | `300` | Lambda timeout (seconds) |
+| `memory_size` | no | `512` | Lambda memory (MB) |
+| `create_ecs` | no | `false` | Deploy optional ECS + ALB demo |
+| `ecs_image` | no | `docker/nginx:latest` | Image to pull from JFrog for the ECS task, relative to `jfrog_host` (resolves to `<jfrog_host>/<ecs_image>`) |
+| `alb_allowed_cidr_blocks` | no | `["0.0.0.0/0"]` | CIDRs allowed to hit the ALB |
+| `vpc_cidr` | no | `10.0.0.0/16` | VPC CIDR |
+| `tags` | no | `{}` | Resource tags |
+
+See [`terraform.tfvars.example`](../terraform-example/terraform.tfvars.example) for a starter configuration.
+
+## JFrog IAM role tagging (managed by Terraform)
+
+When `assign_jfrog_iam_role = true` (default), Terraform manages a [`platform_aws_iam_role`](https://registry.terraform.io/providers/jfrog/platform/latest/docs/resources/aws_iam_role) resource (from the `jfrog/platform` provider) that tags `jfrog_admin_username` with the Lambda execution role ARN.
+
+Provide credentials via `jfrog_admin_token` and `jfrog_admin_username` in `terraform.tfvars`. Requires Artifactory 7.90.10 or later.
+
+## When `assign_jfrog_iam_role = false`
+
+Set `assign_jfrog_iam_role = false` when the JFrog user is already tagged with the Lambda IAM role (or you will tag it manually).
+
+```hcl
+assign_jfrog_iam_role = false
+# jfrog_admin_username and jfrog_admin_token are not required
+```
+
+### What Terraform still manages
+
+AWS resources (Lambda, secret, rotation, VPC, optional ECS) are always created. Only the JFrog IAM role API call is skipped.
+
+### What you must ensure manually
+
+After `terraform apply`, tag a JFrog user with the Lambda role ARN:
+
+```bash
+IAM_ROLE_ARN=$(terraform output -raw iam_role_arn)
+
+curl -XPUT "https://YOUR_JFROG_HOST/access/api/v1/aws/iam_role" \
+  -H "Content-type: application/json" \
+  -H "Authorization: Bearer YOUR_JFROG_ADMIN_TOKEN" \
+  -d "{\"username\": \"YOUR_JFROG_USERNAME\", \"iam_role\": \"${IAM_ROLE_ARN}\"}"
+```
+
+See [Tag a JFrog user](manual-setup.md#5-tag-a-jfrog-user-with-the-lambda-iam-role).
+
+### Impact of skipping assignment
+
+- **No JFrog admin token required** for apply
+- **`terraform destroy` is AWS-only** for JFrog — an existing IAM role tag is not removed
+- **Drift is your responsibility** — Terraform will not detect changes made to the JFrog IAM role mapping outside this module
+
+### Switching between modes
+
+| Transition | Guidance |
+|------------|----------|
+| `false` → `true` | Set `assign_jfrog_iam_role = true`, provide username and admin token, re-apply |
+| `true` → `false` | Re-applying with `assign_jfrog_iam_role = false` destroys the `platform_aws_iam_role` resource and removes the JFrog tag. To keep the tag, run `terraform state rm platform_aws_iam_role.jfrog_iam_role_assignment` first |
+
+## Outputs
+
+| Output | Use |
+|--------|-----|
+| `secret_name` | Secrets Manager secret name |
+| `secret_arn` | Secret ARN (ECS task definitions, IAM) |
+| `function_name` | Lambda function name |
+| `function_arn` | Lambda function ARN |
+| `iam_role_arn` | Lambda IAM role ARN (JFrog user tagging) |
+| `assign_jfrog_iam_role` | Whether JFrog tagging is managed by Terraform |
+| `jfrog_iam_role_assigned` | Assignment status or skip message |
+| `vpc_id` | VPC ID |
+| `ecs_cluster_name` | ECS cluster name (or `N/A`) |
+| `ecs_service_name` | ECS service name (or `N/A`) |
+| `alb_dns_name` | ALB DNS name (or `N/A`) |
+| `nginx_endpoint` | Demo nginx URL (or `N/A`) |
+
+## Verify
+
+### 1. Secret rotation
+
+With `trigger_initial_rotation = true` (default), Terraform kicks off the first rotation automatically after apply, so the secret should already hold a real JFrog token. To rotate again on demand:
+
+```bash
+cd terraform-example
+SECRET_NAME=$(terraform output -raw secret_name)
+REGION=$(terraform output -raw region 2>/dev/null || echo "eu-central-1")
+
+aws secretsmanager rotate-secret --secret-id "$SECRET_NAME" --region "$REGION"
+
+aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_NAME" \
+  --version-stage AWSCURRENT \
+  --region "$REGION"
+```
+
+### 2. Lambda logs
+
+```bash
+FUNCTION_NAME=$(terraform output -raw function_name)
+REGION=$(terraform output -raw region 2>/dev/null || echo "eu-central-1")
+
+aws logs tail /aws/lambda/$FUNCTION_NAME --follow --region "$REGION"
+```
+
+### 3. ECS service (if `create_ecs = true`)
+
+```bash
+CLUSTER_NAME=$(terraform output -raw ecs_cluster_name)
+SERVICE_NAME=$(terraform output -raw ecs_service_name)
+REGION=$(terraform output -raw region 2>/dev/null || echo "eu-central-1")
+
+aws ecs describe-services \
+  --cluster "$CLUSTER_NAME" \
+  --services "$SERVICE_NAME" \
+  --region "$REGION"
+```
+
+### 4. ALB endpoint (if ECS enabled)
+
+```bash
+ALB_ENDPOINT=$(terraform output -raw nginx_endpoint)
+curl "$ALB_ENDPOINT"
+```
+
+### 5. JFrog user tagging
+
+```bash
+IAM_ROLE_ARN=$(terraform output -raw iam_role_arn)
+
+curl -XGET "https://YOUR_JFROG_HOST/access/api/v1/aws/iam_role/YOUR_JFROG_USERNAME" \
+  -H "Authorization: Bearer YOUR_JFROG_ADMIN_TOKEN"
+```
+
+## Cleanup
+
+```bash
+cd terraform-example
+terraform plan -destroy
+terraform destroy
+```
+
+**Notes:**
+
+1. The secret uses `recovery_window_in_days = 0` (immediate delete).
+2. NAT Gateway / ALB deletion can take several minutes.
+3. When `assign_jfrog_iam_role = true`, the JFrog IAM role tag is managed by the `platform_aws_iam_role` resource, so `terraform destroy` removes it automatically. To keep the tag, run `terraform state rm platform_aws_iam_role.jfrog_iam_role_assignment` before destroy, or set `assign_jfrog_iam_role = false` and re-apply first.
+4. Generated zip under `terraform-example/build/` is local build output (gitignored) and is recreated on the next plan/apply.
