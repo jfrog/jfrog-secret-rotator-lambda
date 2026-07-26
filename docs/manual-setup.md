@@ -1,18 +1,27 @@
 # Manual setup (AWS CLI & REST API)
 
-Step-by-step deployment using the AWS CLI and JFrog REST API. For Terraform, see [Terraform setup](terraform-setup.md).
+Step-by-step deployment using the AWS CLI and JFrog REST API. For Terraform, see
+[Terraform setup](terraform-setup.md).
 
 ## Prerequisites
 
 - [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate permissions
-- A JFrog Artifactory instance and a JFrog user that will be tagged with the Lambda IAM Role ARN
+- A JFrog Artifactory instance and a JFrog user that will be tagged with the
+  Lambda IAM Role ARN
 - `zip` (standard on macOS/Linux; used by the build script)
 
-The steps below follow the resource dependency order: the Lambda zip is built first (the function requires it), the secret is created next so its ARN can be referenced by the IAM policy, then the role and function are created, the JFrog user is tagged with the Lambda IAM role, and rotation is configured last (it triggers an immediate rotation that depends on all of the above).
+The steps below follow the resource dependency order: the Lambda zip is built
+first (the function requires it), the secret is created next so its ARN can be
+referenced by the IAM policy, then the role and function are created, the JFrog
+user is tagged with the Lambda IAM role, and rotation is configured last (it
+triggers an immediate rotation that depends on all of the above).
 
 ## 1. Build the Lambda zip
 
-The Lambda runs as a **Python zip** on the managed `python3.14` runtime (handler `lambda_function.lambda_handler`). The managed runtime provides `boto3`, `botocore`, and `urllib3`, so the zip contains only [`lambda_function.py`](../secret-rotator/lambda_function.py).
+The Lambda runs as a **Python zip** on the managed `python3.14` runtime (handler
+`lambda_function.lambda_handler`). The managed runtime provides `boto3`,
+`botocore`, and `urllib3`, so the zip contains only
+[`lambda_function.py`](../secret-rotator/lambda_function.py).
 
 From the repository root:
 
@@ -20,13 +29,23 @@ From the repository root:
 ./scripts/build-lambda-zip.sh
 ```
 
-The script writes `build/jfrog-secret-rotator-lambda.zip` with `lambda_function.py` at the **archive root** so the handler path `lambda_function.lambda_handler` resolves. The resulting archive is used as `--zip-file` when creating the Lambda function in [Step 4](#4-create-the-lambda-function).
+The script writes `build/jfrog-secret-rotator-lambda.zip` with
+`lambda_function.py` at the **archive root** so the handler path
+`lambda_function.lambda_handler` resolves. The resulting archive is used as
+`--zip-file` when creating the Lambda function in
+[Step 4](#4-create-the-lambda-function).
 
-> Terraform does not use this script — the [Terraform setup](terraform-setup.md) packages the same file with the [`archive_file`](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file) data source. If you add dependencies that are not in the managed runtime, extend both packaging paths to vendor them (for example with `pip install -t` before zipping).
+> Terraform does not use this script - the
+> [Terraform setup](terraform-setup.md) packages the same file with the
+> [`archive_file`](https://registry.terraform.io/providers/hashicorp/archive/latest/docs/data-sources/file)
+> data source. If you add dependencies that are not in the managed runtime,
+> extend both packaging paths to vendor them (for example with `pip install -t`
+> before zipping).
 
 ## 2. Create the AWS Secrets Manager secret
 
-The rotated secret JSON uses `username` and `password` (the JFrog access token is stored as `password`), matching what ECS private registry credentials expect.
+The rotated secret JSON uses `username` and `password` (the JFrog access token
+is stored as `password`), matching what ECS private registry credentials expect.
 
 ```bash
 # Create a secret for the JFrog token
@@ -37,13 +56,16 @@ aws secretsmanager create-secret \
   --secret-string '{"username":"dummy-user","password":"dummy-password"}'
 ```
 
-The `create-secret` response includes the full secret ARN (name plus a random 6-character suffix), for example:
+The `create-secret` response includes the full secret ARN (name plus a random
+6-character suffix), for example:
 
-```
+```text
 arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-a1B2c3
 ```
 
-Note this ARN — it is used as `<full secret ARN>` in the IAM policy in the next step. Rotation is configured later in [Step 6](#6-configure-secret-rotation), after the Lambda function exists.
+Note this ARN - it is used as `<full secret ARN>` in the IAM policy in the next
+step. Rotation is configured later in
+[Step 6](#6-configure-secret-rotation), after the Lambda function exists.
 
 ## 3. Create the Lambda IAM role and permissions
 
@@ -118,9 +140,13 @@ aws iam put-role-policy \
   }'
 ```
 
-The policy can be tightened by limiting resources (assumed roles, specific secrets, etc.).
+The policy can be tightened by limiting resources (assumed roles, specific
+secrets, etc.).
 
-> **`<full secret ARN>`** is the ARN returned by `create-secret` in [Step 2](#2-create-the-aws-secrets-manager-secret). If you prefer not to copy the exact ARN, you can use a wildcard suffix instead: `arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-*`.
+> **`<full secret ARN>`** is the ARN returned by `create-secret` in
+> [Step 2](#2-create-the-aws-secrets-manager-secret). If you prefer not to copy
+> the exact ARN, you can use a wildcard suffix instead:
+> `arn:aws:secretsmanager:<region>:<account_id>:secret:jfrog/access-token-*`.
 
 ## 4. Create the Lambda function
 
@@ -152,7 +178,10 @@ aws lambda add-permission \
 
 ## 5. Tag a JFrog user with the Lambda IAM role
 
-Do this **before** configuring rotation: `rotate-secret` in the next step triggers an immediate rotation, and that first rotation fails at `createSecret` (JFrog token exchange) unless the JFrog user is already mapped to the Lambda IAM role.
+Do this **before** configuring rotation: `rotate-secret` in the next step
+triggers an immediate rotation, and that first rotation fails at `createSecret`
+(JFrog token exchange) unless the JFrog user is already mapped to the Lambda
+IAM role.
 
 ```bash
 curl -XPUT "https://<jfrog host>/access/api/v1/aws/iam_role" \
@@ -165,13 +194,23 @@ curl -XGET "https://<jfrog host>/access/api/v1/aws/iam_role/<jfrog username>" \
   -H "Authorization: Bearer <JFrog admin token>"
 ```
 
-When using Terraform with `assign_jfrog_iam_role = false`, run this step with `terraform output -raw iam_role_arn` after apply. See [Terraform setup](terraform-setup.md#when-assign_jfrog_iam_role--false).
+When using Terraform with `assign_jfrog_iam_role = false`, run this step with
+`terraform output -raw iam_role_arn` after apply. See
+[Terraform setup](terraform-setup.md#when-assign_jfrog_iam_role--false).
 
 ## 6. Configure secret rotation
 
-With the function created, allowed to be invoked by Secrets Manager, and the JFrog user tagged ([Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role)), attach the rotation schedule to the secret from Step 2.
+With the function created, allowed to be invoked by Secrets Manager, and the
+JFrog user tagged
+([Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role)), attach the rotation
+schedule to the secret from Step 2.
 
-> `rotate-secret` triggers an **immediate** rotation as soon as the schedule is attached, so it doubles as the first end-to-end test. This succeeds because the JFrog user was tagged in [Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role). To attach the schedule without rotating right away, add `RotateImmediately=false` to `--rotation-rules`.
+> `rotate-secret` triggers an **immediate** rotation as soon as the schedule is
+> attached, so it doubles as the first end-to-end test. This succeeds because
+> the JFrog user was tagged in
+> [Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role). To attach the schedule
+> without rotating right away, add `RotateImmediately=false` to
+> `--rotation-rules`.
 
 ```bash
 # Configure rotation schedule
@@ -187,21 +226,28 @@ aws secretsmanager rotate-secret \
 ### Token TTL vs rotation schedule
 
 | Rotation schedule | Minimum `SECRET_TTL` | Recommended `SECRET_TTL` (margin) |
-|-------------------|----------------------|-----------------------------------|
+| --- | --- | --- |
 | `rate(4 hours)` | `14401` | `21600` (6 hours) |
 | `rate(1 hour)` | `3601` | `4680` |
 
-Set `SECRET_TTL` so the JFrog token outlives the Secrets Manager rotation interval.
+Set `SECRET_TTL` so the JFrog token outlives the Secrets Manager rotation
+interval.
 
 ## Usage
 
 ### Testing and verifying rotation
 
-This function is a **Secrets Manager rotation** Lambda. AWS invokes it with `SecretId`, `ClientRequestToken`, and `Step` (`createSecret`, `setSecret`, `testSecret`, or `finishSecret`). It is not meant to be called with an empty or generic test event.
+This function is a **Secrets Manager rotation** Lambda. AWS invokes it with
+`SecretId`, `ClientRequestToken`, and `Step` (`createSecret`, `setSecret`,
+`testSecret`, or `finishSecret`). It is not meant to be called with an empty or
+generic test event.
 
-**Do not use the Lambda console “Test” button with `{}` or a default event.** That causes `KeyError: 'SecretId'` because those fields are missing.
+**Do not use the Lambda console "Test" button with `{}` or a default event.**
+That causes `KeyError: 'SecretId'` because those fields are missing.
 
-**Recommended: trigger a real rotation** (after [Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role) and [Step 6](#6-configure-secret-rotation)):
+**Recommended: trigger a real rotation** (after
+[Step 5](#5-tag-a-jfrog-user-with-the-lambda-iam-role) and
+[Step 6](#6-configure-secret-rotation)):
 
 ```bash
 aws secretsmanager rotate-secret \
@@ -209,17 +255,23 @@ aws secretsmanager rotate-secret \
   --region <region>
 ```
 
-Secrets Manager runs all four rotation steps in order and passes the correct payload on each invocation.
+Secrets Manager runs all four rotation steps in order and passes the correct
+payload on each invocation.
 
 **Check that it worked:**
 
-1. **CloudWatch Logs** — Log group `/aws/lambda/jfrog-secret-rotator-lambda`. Look for lines such as `Secret rotation step createSecret` through `finishSecret`, and `JFrog Readiness Check Successful` on the test step. Errors (permissions, JFrog token exchange, readiness) appear here with stack traces.
+1. **CloudWatch Logs** - Log group
+   `/aws/lambda/jfrog-secret-rotator-lambda`. Look for lines such as
+   `Secret rotation step createSecret` through `finishSecret`, and
+   `JFrog Readiness Check Successful` on the test step. Errors (permissions,
+   JFrog token exchange, readiness) appear here with stack traces.
 
    ```bash
    aws logs tail /aws/lambda/jfrog-secret-rotator-lambda --follow --region <region>
    ```
 
-2. **Secret value** — Confirm `AWSCURRENT` has a non-dummy `username` / `password` (token):
+2. **Secret value** - Confirm `AWSCURRENT` has a non-dummy `username` /
+   `password` (token):
 
    ```bash
    aws secretsmanager get-secret-value \
@@ -228,7 +280,9 @@ Secrets Manager runs all four rotation steps in order and passes the correct pay
      --version-stage AWSCURRENT
    ```
 
-3. **Rotation state** — Ensure rotation is enabled and version stages look sane (`AWSCURRENT` on the new version; no stuck `AWSPENDING` unless a rotation is in progress):
+3. **Rotation state** - Ensure rotation is enabled and version stages look sane
+   (`AWSCURRENT` on the new version; no stuck `AWSPENDING` unless a rotation is
+   in progress):
 
    ```bash
    aws secretsmanager describe-secret \
@@ -236,7 +290,10 @@ Secrets Manager runs all four rotation steps in order and passes the correct pay
      --region <region>
    ```
 
-**Lambda console test (optional, limited):** If you must test from the console, use an event shaped like Secrets Manager sends. `ClientRequestToken` must match a secret version that is staged as `AWSPENDING`, or the handler will reject the invocation. Prefer `rotate-secret` instead.
+**Lambda console test (optional, limited):** If you must test from the console,
+use an event shaped like Secrets Manager sends. `ClientRequestToken` must match
+a secret version that is staged as `AWSPENDING`, or the handler will reject the
+invocation. Prefer `rotate-secret` instead.
 
 ```json
 {
@@ -254,7 +311,8 @@ aws secretsmanager rotate-secret \
   --region <region>
 ```
 
-See [Testing and verifying rotation](#testing-and-verifying-rotation) for CloudWatch and secret checks.
+See [Testing and verifying rotation](#testing-and-verifying-rotation) for
+CloudWatch and secret checks.
 
 ```bash
 aws secretsmanager get-secret-value \
@@ -265,7 +323,9 @@ aws secretsmanager get-secret-value \
 
 ### Use with an ECS task
 
-Create an ECS task definition that pulls from a private registry. Set the image to your JFrog Docker repository, for example `my-platform.jfrog.io/docker/<DOCKER_IMAGE>:<DOCKER_TAG>`.
+Create an ECS task definition that pulls from a private registry. Set the image
+to your JFrog Docker repository, for example
+`my-platform.jfrog.io/docker/<DOCKER_IMAGE>:<DOCKER_TAG>`.
 
 Ensure the task execution role can read the secret:
 
@@ -289,12 +349,14 @@ Ensure the task execution role can read the secret:
 
 ## Monitoring and logging
 
-The function logs each rotation step. For testing and verification commands, see [Testing and verifying rotation](#testing-and-verifying-rotation). Monitor CloudWatch Logs for status and errors.
+The function logs each rotation step. For testing and verification commands, see
+[Testing and verifying rotation](#testing-and-verifying-rotation). Monitor
+CloudWatch Logs for status and errors.
 
 ## Teardown
 
 ```bash
-# Variables — adjust to match your deployment
+# Variables - adjust to match your deployment
 REGION="eu-central-1"
 ACCOUNT_ID="<account_id>"
 SECRET_NAME="jfrog/access-token"
@@ -326,27 +388,36 @@ curl -XDELETE "https://${JFROG_HOST}/access/api/v1/aws/iam_role/${JFROG_USERNAME
 
 ## Troubleshooting
 
-1. **Permission denied** — Ensure the Lambda execution role has the required Secrets Manager, STS, Logs, and `lambda:GetFunctionConfiguration` permissions.
-2. **Token exchange failure** — Verify `JFROG_HOST` and that the JFrog user is tagged with the Lambda IAM role ARN.
-3. **Secret not found** — Confirm the secret exists and rotation is enabled.
-4. **Invalid / expired token** — Ensure `SECRET_TTL` is longer than the rotation schedule.
-5. **Corrupted `AWSPENDING` version** — remove the pending stage, for example:
+1. **Permission denied** - Ensure the Lambda execution role has the required
+   Secrets Manager, STS, Logs, and `lambda:GetFunctionConfiguration`
+   permissions.
+2. **Token exchange failure** - Verify `JFROG_HOST` and that the JFrog user is
+   tagged with the Lambda IAM role ARN.
+3. **Secret not found** - Confirm the secret exists and rotation is enabled.
+4. **Invalid / expired token** - Ensure `SECRET_TTL` is longer than the
+   rotation schedule.
+5. **Corrupted `AWSPENDING` version** - remove the pending stage, for example:
 
-```bash
-aws secretsmanager update-secret-version-stage \
-  --secret-id "jfrog/access-token" \
-  --version-stage "AWSPENDING" \
-  --remove-from-version-id "version-id-to-remove"
-```
+   ```bash
+   aws secretsmanager update-secret-version-stage \
+     --secret-id "jfrog/access-token" \
+     --version-stage "AWSPENDING" \
+     --remove-from-version-id "version-id-to-remove"
+   ```
 
-6. **`create-secret` fails: "a secret with this name is already scheduled for deletion"** — a previous teardown deleted the secret with a recovery window (not `--force-delete-without-recovery`). Restore it instead of recreating, then reset its value:
+6. **`create-secret` fails: "a secret with this name is already scheduled for
+   deletion"** - a previous teardown deleted the secret with a recovery window
+   (not `--force-delete-without-recovery`). Restore it instead of recreating,
+   then reset its value:
 
-```bash
-aws secretsmanager restore-secret --secret-id "jfrog/access-token" --region <region>
-aws secretsmanager put-secret-value \
-  --secret-id "jfrog/access-token" \
-  --region <region> \
-  --secret-string '{"username":"dummy-user","password":"dummy-password"}'
-```
+   ```bash
+   aws secretsmanager restore-secret --secret-id "jfrog/access-token" --region <region>
+   aws secretsmanager put-secret-value \
+     --secret-id "jfrog/access-token" \
+     --region <region> \
+     --secret-string '{"username":"dummy-user","password":"dummy-password"}'
+   ```
 
-The restored secret keeps its original ARN. Reuse that ARN as `<full secret ARN>` in [Step 3](#3-create-the-lambda-iam-role-and-permissions).
+The restored secret keeps its original ARN. Reuse that ARN as
+`<full secret ARN>` in
+[Step 3](#3-create-the-lambda-iam-role-and-permissions).
